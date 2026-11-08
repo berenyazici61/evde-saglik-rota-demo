@@ -45,12 +45,28 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
     # Başlangıç görünümü noktaların ortası (fitBounds çalışmasa bile harita Trabzon'da açılsın)
     m.location = [(sinir[0][0] + sinir[1][0]) / 2, (sinir[0][1] + sinir[1][1]) / 2]
     m.fit_bounds(sinir)
-    # Harita sekme / gizli kutu içinde çizilirken boyutu henüz bilinmeyebilir (bulutta görüldü):
-    # sayfa yüklendikten sonra boyutu yenile ve rotaya yeniden yakınlaş.
+    # Harita gizli bir sekmede / kutuda çizilirken boyutu sıfırdır ve fitBounds boşa gider (bulutta görüldü).
+    # Çözüm: sayfa yüklenince VE harita görünür hale geldiği anda (boyutu 0'dan büyüdüğünde)
+    # boyutu yenile ve rotaya yeniden yakınlaş.
     ad = m.get_name()
-    m.get_root().html.add_child(folium.Element(
-        f"<script>window.addEventListener('load', function () {{ setTimeout(function () {{"
-        f" {ad}.invalidateSize(); {ad}.fitBounds({sinir}); }}, 400); }});</script>"))
+    m.get_root().html.add_child(folium.Element(f"""<script>
+(function () {{
+  function sigdir() {{ try {{ {ad}.invalidateSize(); {ad}.fitBounds({sinir}); }} catch (e) {{}} }}
+  window.addEventListener('load', function () {{ setTimeout(sigdir, 400); }});
+  // Ekran çizimine bağlı olmayan yoklama: harita görünür (genişlik VE yükseklik > 0) ama henüz rotaya
+  // yakınlaşmamışsa yakınlaş. Gizlenince (boyut 0) bayrak sıfırlanır; sekme tekrar açılınca yine yakınlaşır.
+  var yakinlasti = false;
+  setInterval(function () {{
+    var kutu = document.getElementById('{ad}');
+    var gorunur = kutu && kutu.clientWidth > 0 && kutu.clientHeight > 0;
+    if (!gorunur) {{ yakinlasti = false; return; }}
+    if (!yakinlasti) {{
+      sigdir();
+      try {{ yakinlasti = {ad}.getZoom() >= 6; }} catch (e) {{}}
+    }}
+  }}, 500);
+}})();
+</script>"""))
     return m
 
 
