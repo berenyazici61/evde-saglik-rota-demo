@@ -17,7 +17,7 @@ def ekip_rengi(ekip_index: int) -> str:
 
 def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | None = None) -> folium.Map:
     """sadece_ekip: 0'dan başlayan ekip sırası; verilirse yalnızca o ekibin rotası çizilir."""
-    m = folium.Map(location=merkez, zoom_start=11, tiles="OpenStreetMap")
+    m = folium.Map(location=merkez, zoom_start=10, tiles="OpenStreetMap")
     folium.Marker(merkez, tooltip="Merkez (ARSEV)", icon=folium.Icon(color="black", icon="home")).add_to(m)
     folium.Marker(lab, tooltip="7M Hastanesi (kan teslim)", icon=folium.Icon(color="red", icon="plus")).add_to(m)
     noktalar = [merkez, lab]
@@ -40,8 +40,17 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
                 tooltip=f"{r.ekip} · {sira}. durak · {d.ad} · {saat(d.varis_dk)}–{saat(d.ayrilis_dk)}"
                         + (" · kan alımı" if d.kan_alimi else ""),
             ).add_to(m)
-    m.fit_bounds([[min(p[0] for p in noktalar), min(p[1] for p in noktalar)],
-                  [max(p[0] for p in noktalar), max(p[1] for p in noktalar)]])
+    sinir = [[min(p[0] for p in noktalar), min(p[1] for p in noktalar)],
+             [max(p[0] for p in noktalar), max(p[1] for p in noktalar)]]
+    # Başlangıç görünümü noktaların ortası (fitBounds çalışmasa bile harita Trabzon'da açılsın)
+    m.location = [(sinir[0][0] + sinir[1][0]) / 2, (sinir[0][1] + sinir[1][1]) / 2]
+    m.fit_bounds(sinir)
+    # Harita sekme / gizli kutu içinde çizilirken boyutu henüz bilinmeyebilir (bulutta görüldü):
+    # sayfa yüklendikten sonra boyutu yenile ve rotaya yeniden yakınlaş.
+    ad = m.get_name()
+    m.get_root().html.add_child(folium.Element(
+        f"<script>window.addEventListener('load', function () {{ setTimeout(function () {{"
+        f" {ad}.invalidateSize(); {ad}.fitBounds({sinir}); }}, 400); }});</script>"))
     return m
 
 
