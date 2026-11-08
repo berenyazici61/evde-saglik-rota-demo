@@ -1,0 +1,13 @@
+islem,min_dk,max_dk
+Pansuman / yara tedavisi,30,60
+Kan alımı,10,40
+Serum,15,20
+Sonda,10,15
+Aspirasyon,15,20
+Damardan antibiyotik tedavisi,15,20
+Röntgen,10,20
+EKG,10,20
+NG takılması,15,20
+PEG takılması,30,40
+Trakeostomi kanül değişimi,30,40
+Vital bulgu / sosyal ziyaret,10,15
