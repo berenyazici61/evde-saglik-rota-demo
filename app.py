@@ -26,6 +26,7 @@ S = "sayfalar/"
 SAYFALAR = {
     "genel": st.Page(S + "genel_bakis.py", title="Genel Bakış", icon=":material/dashboard:"),
     "rota": st.Page(S + "rota_planlama.py", title="Rota Planlama", icon=":material/route:"),
+    "revizyon": st.Page(S + "rota_revizyon.py", title="Gün İçi Değişiklik", icon=":material/emergency:"),
     "rapor": st.Page(S + "raporlar.py", title="Raporlar", icon=":material/bar_chart:"),
     "hastalar": st.Page(S + "hastalar.py", title="Hastalar", icon=":material/patient_list:"),
     "personel": st.Page(S + "personel.py", title="Personel", icon=":material/badge:"),
@@ -40,7 +41,7 @@ SAYFALAR = {
 # Hangi rol hangi sayfaları görür
 ROL_MENUSU = {
     "yonetici": {
-        "Planlama": ["genel", "rota", "rapor"],
+        "Planlama": ["genel", "rota", "revizyon", "rapor"],
         "Kayıtlar": ["hastalar", "personel", "iz", "yedek"],
         "Hesap": ["hesabim"],
     },

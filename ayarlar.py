@@ -106,6 +106,11 @@ AGIRLIK_EN_GEC_BITIS = 1            # en geç biten ekibin bitiş süresi (dk)
 AGIRLIK_TOPLAM_YOL = 1              # tüm ekiplerin toplam yol süresi (dk)
 # Öğle arası ve sabit bir bitiş saati yok.
 
+# --- Gün içi dinamik rota revizyonu (acil hasta, ziyaret uzaması, iptal) --- VARSAYIM, teyit edilecek
+ACIL_HEDEF_DK = 30                 # acil hastaya olaydan sonra en geç bu sürede ulaşılması hedeflenir (aşılırsa uyarı)
+ACIL_BEKLEME_AGIRLIGI = 20          # acil hastanın olaydan varışa kadar beklediği her dakika amaçta 20 dk sayılır
+DEGISIKLIK_CEZASI_DK = 15           # bir hastanın sabah planındaki ekibinden başka ekibe geçmesi amaçta 15 dk sayılır
+
 
 def dakika(saat: str) -> int:
     """'09:00' -> 540 (gece yarısından itibaren dakika)."""

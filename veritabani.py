@@ -142,6 +142,20 @@ CREATE TABLE IF NOT EXISTS rota_duraklari (
     tup_sayisi  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (rota_id, ekip_no, sira)
 );
+
+-- Gün içi rota revizyonları (acil hasta, uzama, iptal): onaylanan her revizyon bir satır
+CREATE TABLE IF NOT EXISTS rota_revizyonlari (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    tarih               TEXT NOT NULL,
+    olay_saati_dk       INTEGER NOT NULL,
+    olaylar             TEXT NOT NULL,
+    etkilenen_ekipler   TEXT,
+    degisiklikler       TEXT,
+    onceki_bitis_dk     INTEGER,
+    yeni_bitis_dk       INTEGER,
+    kullanici_id        INTEGER REFERENCES kullanicilar(id),
+    kayit_zamani        TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 """
 
 

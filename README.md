@@ -21,5 +21,7 @@ streamlit run app.py
 
 ## Neler var?
 - Google OR-Tools ile 3 ekip için günlük rota optimizasyonu (kan teslim saati, ziyaret süreleri, merkeze dönüş)
+- Gün içi dinamik rota revizyonu: acil hasta, uzayan ziyaret veya iptal olduğunda rotalar ekiplerin o anki
+  konumundan yeniden hesaplanır (yönetici → Planlama → Gün İçi Değişiklik)
 - Mevcut sabit bölge sistemiyle karşılaştırma ve raporlar
 - Rol bazlı ekranlar (yönetici / doktor / hemşire), telefona uygun hemşire ekranları

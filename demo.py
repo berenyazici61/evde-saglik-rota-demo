@@ -48,5 +48,6 @@ def tarihleri_guncelle():
                 con.execute("UPDATE rotalar SET tarih = date(tarih, ?) WHERE id = ?", (kaydir, rid))
             con.execute("UPDATE ziyaret_kayitlari SET tarih = date(tarih, ?)", (kaydir,))
             con.execute("UPDATE doktor_notlari SET tarih = date(tarih, ?)", (kaydir,))
+            con.execute("UPDATE rota_revizyonlari SET tarih = date(tarih, ?)", (kaydir,))
         bilgi["referans_tarih"] = (referans + dt.timedelta(days=7 * hafta)).isoformat()
         bilgi_yaz(bilgi)

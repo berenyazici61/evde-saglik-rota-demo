@@ -49,14 +49,22 @@ notlar = veritabani.doktor_notlari()
 talimatlar = (notlar.dropna(subset=["hemsire_talimati"]).drop_duplicates("hasta_kodu")
               .set_index("hasta_kodu")["hemsire_talimati"])
 
-hasta_duraklari = [d for d in rota.duraklar if d.tur == "Hasta"]
+revizyonlar = rota_kayit.revizyonlar(tarih_str)
+benimkiler = revizyonlar[revizyonlar["etkilenen_ekipler"].fillna("").str.split(",")
+                         .map(lambda e: str(ekip_no) in e)]
+if not benimkiler.empty:
+    son = benimkiler.iloc[-1]
+    st.warning(f"🔄 **Rotanız güncellendi** ({saat(int(son['olay_saati_dk']))} olayı, onay {son['kayit_zamani'][11:16]}): "
+               f"{son['olaylar']}. Aşağıdaki sıra ve saatler günceldir.")
+
+hasta_duraklari = [d for d in rota.duraklar if d.tur == "Hasta" and not d.islemler.startswith("❌")]
 biten = sum(d.ad in tamamlanan for d in hasta_duraklari)
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Ziyaret", f"{biten} / {len(hasta_duraklari)}")
 c2.metric("Yol", f"{rota.km:.0f} km")
 c3.metric("Tahmini bitiş", saat(rota.bitis_dk))
-st.progress(biten / len(hasta_duraklari), text=f"Ekip {ekip_no} · {biten} ziyaret tamamlandı")
+st.progress(biten / max(1, len(hasta_duraklari)), text=f"Ekip {ekip_no} · {biten} ziyaret tamamlandı")
 if rota.kan_teslim_dk:
     st.info(f"🩸 Kan teslimi: 7M Hastanesi, teslimin bitişi en geç **{ayarlar.KAN_TESLIM_SON_SAAT}** "
             f"(planlanan bitiş {saat(rota.kan_teslim_dk)})")
@@ -78,8 +86,10 @@ for i, d in enumerate(rota.duraklar):
         h = hastalar.loc[d.ad] if d.ad in hastalar.index else None
         bitti = d.ad in tamamlanan
         with st.container(border=True):
-            st.markdown(f"{'✅' if bitti else '⬜'} **{sira}. {d.ad}** · {saat(d.varis_dk)}–{saat(d.ayrilis_dk)}"
-                        + (" · 🩸 kan alımı" if d.kan_alimi else ""))
+            simge = "✅" if bitti else ("❌" if d.islemler.startswith("❌") else "⬜")
+            st.markdown(f"{simge} **{sira}. {d.ad}** · {saat(d.varis_dk)}–{saat(d.ayrilis_dk)}"
+                        + (" · 🩸 kan alımı" if d.kan_alimi else "")
+                        + (" · **🚨 ACİL**" if d.islemler.startswith("🚨") else ""))
             if h is not None:
                 st.caption(f"📍 {h['mahalle']} · {h['konum_tarifi']}")
             st.write("İşlemler: " + d.islemler.replace(";", ", "))
