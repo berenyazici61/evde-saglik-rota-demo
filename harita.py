@@ -5,6 +5,7 @@ import pandas as pd
 
 import ayarlar
 import optimizasyon
+import yol_guzergahi
 from ayarlar import saat
 
 RENKLER = ["#2563eb", "#dc2626", "#16a34a"]  # Ekip 1 mavi, Ekip 2 kırmızı, Ekip 3 yeşil
@@ -28,7 +29,9 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
         yol = [(d.enlem, d.boylam) for d in r.duraklar]
         noktalar += yol
         if r.hasta_sayisi:
-            folium.PolyLine(yol, color=renk, weight=4, opacity=0.75, tooltip=r.ekip).add_to(m)
+            # Gösterim için gerçek yollar üzerinden güzergâh (hesap kuş uçuşu kalır; bkz. yol_guzergahi.py)
+            folium.PolyLine(yol_guzergahi.rota_cizgisi(yol), color=renk, weight=4, opacity=0.75,
+                            tooltip=r.ekip).add_to(m)
         sira = 0
         for d in r.duraklar:
             if d.tur != "Hasta":
