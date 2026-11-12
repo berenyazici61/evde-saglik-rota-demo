@@ -86,7 +86,8 @@ ANA_YOL_HIZ_KMSA = 85       # bölünmüş sahil yolu ortalaması (yasal sınır
 # ---------------------------------------------------------------------------
 YOL_AGI_ANA_YOL_ESIGI_KMSA = 55   # OSM hızı bunun altındaki yollar şehir içi sayılır
 YOL_AGI_SEHIR_ICI_ORANI = 0.7     # şehir içi ortalama = sınırın %70'i (ışık, kavşak, yokuş; 50'lik yolda 35 km/sa)
-YOL_AGI_ANA_YOL_ORANI = 1.12      # ana yollar: Of -> 7M = 50 dk olacak şekilde kalibre (OSM'de sahil yolunun
+TRAFIK_KULLANILABILIR = DEMO      # anlık trafik (TomTom) YALNIZCA demoda (kullanıcı kararı, 12.11.2026)
+YOL_AGI_ANA_YOL_ORANI = 1.12     # ana yollar: Of -> 7M = 50 dk olacak şekilde kalibre (OSM'de sahil yolunun
                                   # çoğu parçasında hız etiketi yok, 60 varsayılıyor; gerçek sınır 82-90)
 
 # ---------------------------------------------------------------------------

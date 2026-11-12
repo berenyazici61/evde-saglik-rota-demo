@@ -16,8 +16,10 @@ def ekip_rengi(ekip_index: int) -> str:
     return RENKLER[ekip_index % len(RENKLER)]
 
 
-def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | None = None) -> folium.Map:
-    """sadece_ekip: 0'dan başlayan ekip sırası; verilirse yalnızca o ekibin rotası çizilir."""
+def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | None = None,
+                  trafik=None) -> folium.Map:
+    """sadece_ekip: 0'dan başlayan ekip sırası; verilirse yalnızca o ekibin rotası çizilir.
+    trafik: anlık trafik çarpanları; verilirse güzergâh trafiğe göre seçilir (yalnızca demo, gün içi revizyon)."""
     m = folium.Map(location=merkez, zoom_start=10, tiles="OpenStreetMap")
     folium.Marker(merkez, tooltip="Merkez (ARSEV)", icon=folium.Icon(color="black", icon="home")).add_to(m)
     folium.Marker(lab, tooltip="7M Hastanesi (kan teslim)", icon=folium.Icon(color="red", icon="plus")).add_to(m)
@@ -30,7 +32,7 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
         noktalar += yol
         if r.hasta_sayisi:
             # Gerçek yollar üzerinden güzergâh (rota hesabıyla aynı yol ağı; bkz. yol_guzergahi.py)
-            folium.PolyLine(yol_guzergahi.rota_cizgisi(yol), color=renk, weight=4, opacity=0.75,
+            folium.PolyLine(yol_guzergahi.rota_cizgisi(yol, trafik), color=renk, weight=4, opacity=0.75,
                             tooltip=r.ekip).add_to(m)
         sira = 0
         for d in r.duraklar:
@@ -70,6 +72,18 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
   }}, 500);
 }})();
 </script>"""))
+    return m
+
+
+def trafik_katmani(m: folium.Map, durum) -> folium.Map:
+    """Anlık trafik örnek noktalarını haritada renkli küçük dairelerle gösterir (yeşil akıcı → kırmızı yoğun)."""
+    for nokta, carpan, oran, kapali in zip(durum.noktalar, durum.carpanlar, durum.hiz_orani, durum.kapali):
+        if oran is None:
+            continue
+        renk = "#16a34a" if carpan < 1.15 else "#f59e0b" if carpan < 1.5 else "#dc2626"
+        metin = "Yol kapalı" if kapali else f"Hız serbest akışın %{oran * 100:.0f}'i · süre ×{carpan:.2f}"
+        folium.CircleMarker(nokta, radius=5, color=renk, weight=1, fill=True, fill_color=renk, fill_opacity=0.8,
+                            tooltip=f"Trafik: {metin}").add_to(m)
     return m
 
 

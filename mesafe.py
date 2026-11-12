@@ -15,7 +15,7 @@ import yol_guzergahi
 
 DUNYA_YARICAPI_KM = 6371.0
 
-_onbellek: dict = {}   # ((enlem, boylam), (enlem, boylam)) -> (km, dk) ; yalnızca bellekte, diske yazılmaz
+_onbellek: dict = {}   # (a, b, trafik) -> (km, dk) ; yalnızca bellekte, diske yazılmaz
 
 
 def kus_ucusu_km(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -46,46 +46,49 @@ def _anahtar(p) -> tuple:
     return (round(float(p[0]), 6), round(float(p[1]), 6))
 
 
-def _olc(noktalar) -> None:
-    """Önbellekte olmayan çiftleri yol ağında hesaplayıp önbelleğe yazar."""
+def _olc(noktalar, trafik=None) -> None:
+    """Önbellekte olmayan çiftleri yol ağında hesaplayıp önbelleğe yazar.
+    trafik: anlık trafik çarpanları (trafik.TrafikDurumu.carpanlar) ya da None."""
     tekil = list(dict.fromkeys(_anahtar(p) for p in noktalar))
-    eksik = any((a, b) not in _onbellek for a in tekil for b in tekil)
+    eksik = any((a, b, trafik) not in _onbellek for a in tekil for b in tekil)
     if not eksik:
         return
-    m = yol_guzergahi.olcumler(tekil)
+    if len(_onbellek) > 200_000:
+        _onbellek.clear()
+    m = yol_guzergahi.olcumler(tekil, trafik)
     for i, a in enumerate(tekil):
         for j, b in enumerate(tekil):
-            if (a, b) in _onbellek:
+            if (a, b, trafik) in _onbellek:
                 continue
             if a == b:
-                _onbellek[(a, b)] = (0.0, 0.0)
+                _onbellek[(a, b, trafik)] = (0.0, 0.0)
             elif m is not None and m[i][j] is not None:
-                _onbellek[(a, b)] = m[i][j]
+                _onbellek[(a, b, trafik)] = m[i][j]
             else:
-                _onbellek[(a, b)] = (tahmini_km(a, b), tahmini_sure_dk(a, b))
+                _onbellek[(a, b, trafik)] = (tahmini_km(a, b), tahmini_sure_dk(a, b))
 
 
-def _cift(a, b) -> tuple:
+def _cift(a, b, trafik=None) -> tuple:
     a, b = _anahtar(a), _anahtar(b)
-    if (a, b) not in _onbellek:
-        _olc([a, b])
-    return _onbellek[(a, b)]
+    if (a, b, trafik) not in _onbellek:
+        _olc([a, b], trafik)
+    return _onbellek[(a, b, trafik)]
 
 
-def yol_km(a, b) -> float:
+def yol_km(a, b, trafik=None) -> float:
     """a'dan b'ye yol mesafesi (km)."""
-    return _cift(a, b)[0]
+    return _cift(a, b, trafik)[0]
 
 
-def yol_suresi_dk(a, b) -> int:
+def yol_suresi_dk(a, b, trafik=None) -> int:
     """a'dan b'ye yol süresi (tam dakika, yukarı yuvarlanır)."""
-    return math.ceil(_cift(a, b)[1] - 1e-9)
+    return math.ceil(_cift(a, b, trafik)[1] - 1e-9)
 
 
-def sure_matrisi(noktalar: list[tuple[float, float]]) -> list[list[int]]:
-    """Tüm nokta çiftleri için yol süresi matrisi (dk)."""
-    _olc(noktalar)
-    return [[0 if i == j else yol_suresi_dk(a, b) for j, b in enumerate(noktalar)]
+def sure_matrisi(noktalar: list[tuple[float, float]], trafik=None) -> list[list[int]]:
+    """Tüm nokta çiftleri için yol süresi matrisi (dk). trafik verilirse anlık trafik hesaba katılır."""
+    _olc(noktalar, trafik)
+    return [[0 if i == j else yol_suresi_dk(a, b, trafik) for j, b in enumerate(noktalar)]
             for i, a in enumerate(noktalar)]
 
 

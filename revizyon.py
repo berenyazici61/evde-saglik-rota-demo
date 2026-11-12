@@ -80,6 +80,7 @@ class RevizyonSonucu:
     acil_varis: dict               # {hasta: varış dk}
     uyarilar: list[str]
     atlanan_nedenleri: dict        # {hasta: neden}
+    trafik: tuple | None = None    # hesapta kullanılan anlık trafik çarpanları (yoksa None)
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +175,9 @@ def kalan_ziyaretler(durumlar: list[EkipDurumu], olaylar: list[Olay]) -> pd.Data
 # 2. Yeniden çözüm
 # ---------------------------------------------------------------------------
 def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay],
-              merkez, lab, sure_limiti_sn: int = 10) -> RevizyonSonucu:
+              merkez, lab, sure_limiti_sn: int = 10, trafik: tuple | None = None) -> RevizyonSonucu:
+    """trafik: anlık trafik çarpanları (trafik.TrafikDurumu.carpanlar; yalnızca demo) ya da None.
+    Verilirse olaydan sonraki yeni yolculukların süreleri trafiğe göre hesaplanır."""
     durumlar, uyarilar = durum_cikar(plan, an_dk, tamamlanan, olaylar)
     z = kalan_ziyaretler(durumlar, olaylar).reset_index(drop=True)
     E, n = len(durumlar), len(z)
@@ -192,7 +195,7 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
     eski_ekip = [None] * (1 + E) + [None if pd.isna(x) else int(x) - 1 for x in z["eski_ekip"]] \
         + [None] * (len(kan) + len(tasiyan))
     tup = [0] * ilk_kopya + [1] * len(kan) + [durumlar[k].tasinan_kan for k in tasiyan]
-    yol = mesafe.sure_matrisi(noktalar)
+    yol = mesafe.sure_matrisi(noktalar, trafik)
 
     lab_suresi = ayarlar.KAN_TESLIM_SURESI_DK
     hedef = ayarlar.dakika(ayarlar.KAN_TESLIM_SON_SAAT) - lab_suresi
@@ -267,7 +270,7 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
         if cozum is not None:
             adaylar.append((cozum.ObjectiveValue(),
                             _oku(cozum, manager, routing, zaman, durumlar, z, noktalar, tur, hizmet, tup,
-                                 ilk_hasta, lab_suresi)))
+                                 ilk_hasta, lab_suresi, trafik)))
     if not adaylar:
         raise RuntimeError("Yeni rota bulunamadı (kısıtlar sağlanamıyor).")
     yeni_rotalar, atlanan = min(adaylar, key=lambda a: a[0])[1]
@@ -304,7 +307,7 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
         satir = z[z["hasta_kodu"] == kod].iloc[0]
         nedenler[kod] = ("Kan teslimi artık en geç saate yetişmiyor; bugün başka bir ekip de alamıyor."
                          if satir["kan_alimi"] else "Kalan sürede hiçbir rotaya sığdırılamadı.")
-    return RevizyonSonucu(sonuc, durumlar, degisen, acil_varis, uyarilar, nedenler)
+    return RevizyonSonucu(sonuc, durumlar, degisen, acil_varis, uyarilar, nedenler, trafik)
 
 
 def _eski_sira(durumlar, z, kan, tasiyan, ilk_hasta, ilk_kopya, ilk_tasinan, manager):
@@ -333,7 +336,8 @@ def _eski_sira(durumlar, z, kan, tasiyan, ilk_hasta, ilk_kopya, ilk_tasinan, man
     return rotalar
 
 
-def _oku(cozum, manager, routing, zaman, durumlar, z, noktalar, tur, hizmet, tup, ilk_hasta, lab_suresi):
+def _oku(cozum, manager, routing, zaman, durumlar, z, noktalar, tur, hizmet, tup, ilk_hasta, lab_suresi,
+         trafik=None):
     rotalar = []
     for k, e in enumerate(durumlar):
         duraklar = [copy.copy(d) for d in e.sabit]
@@ -346,7 +350,7 @@ def _oku(cozum, manager, routing, zaman, durumlar, z, noktalar, tur, hizmet, tup
         while True:
             node = manager.IndexToNode(idx)
             varis = cozum.Value(zaman.CumulVar(idx))
-            km += mesafe.yol_km(noktalar[onceki], noktalar[node])
+            km += mesafe.yol_km(noktalar[onceki], noktalar[node], trafik)
             if tur[node] == "Merkez":
                 yeni.append(Durak("Merkez", ayarlar.MERKEZ["ad"], *noktalar[node], varis,
                                   varis + ayarlar.MERKEZ_DONUS_SURESI_DK))

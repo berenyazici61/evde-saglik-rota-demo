@@ -19,6 +19,7 @@ import oturum
 import planlama
 import revizyon
 import rota_kayit
+import trafik
 import veri_yukle
 import veritabani
 from ayarlar import saat
@@ -56,7 +57,38 @@ if kayit is None:
     st.stop()
 bilgi, plan = kayit
 
-anahtar = (tarih_str, an_dk)
+# ---------------------------------------------------------------------------
+# Anlık trafik (yalnızca demo; hasta konumu gönderilmez, bkz. trafik.py)
+# ---------------------------------------------------------------------------
+trafik_durumu = None
+if ayarlar.TRAFIK_KULLANILABILIR:
+    with st.container(border=True):
+        if not trafik.kullanilabilir():
+            st.caption("🚦 Anlık trafik bu demoda kullanılabilir, ancak TomTom API anahtarı tanımlı değil "
+                       "(Streamlit Secrets → TOMTOM_API_KEY). Şimdilik trafiksiz hesaplanıyor.")
+        else:
+            simdiki = tarih == bugun and abs(an_dk - (simdi.hour * 60 + simdi.minute)) <= 60
+            t1, t2 = st.columns([4, 1])
+            trafik_acik = t1.toggle("🚦 Anlık trafiği hesaba kat", value=simdiki, disabled=not simdiki,
+                                    help="Anlık trafik yalnızca bugün ve şimdiki saate yakın (±1 saat) bir olay "
+                                         "saati için anlamlıdır.")
+            if trafik_acik:
+                trafik_durumu = trafik.guncel_durum(yenile=t2.button("Yenile"))
+                if trafik_durumu is None:
+                    st.warning("Trafik servisine ulaşılamadı; trafiksiz hesaplanacak.")
+                else:
+                    yogun = sum(c >= 1.5 for c in trafik_durumu.carpanlar)
+                    orta = sum(1.15 <= c < 1.5 for c in trafik_durumu.carpanlar)
+                    st.caption(
+                        f"Trafik {dt.datetime.fromtimestamp(trafik_durumu.zaman).strftime('%H:%M')} itibarıyla, "
+                        f"{len(trafik_durumu.carpanlar)} bölge: 🔴 {yogun} yoğun · 🟠 {orta} orta · "
+                        f"🟢 {len(trafik_durumu.carpanlar) - yogun - orta} akıcı. Ortalama süre çarpanı "
+                        f"×{trafik_durumu.ortalama_yavaslama:.2f}. Servise yalnızca ana yollardaki sabit örnek "
+                        "noktalar gönderilir; hasta ya da ekip konumu gönderilmez.")
+            elif not simdiki:
+                st.caption("🚦 Anlık trafik yalnızca bugün ve şimdiki saate yakın olaylar için açılabilir.")
+
+anahtar = (tarih_str, an_dk, trafik_durumu.carpanlar if trafik_durumu else None)
 if st.session_state.get("rev_anahtar_tarih") != tarih_str:  # tarih değişince olay listesi sıfırlansın
     st.session_state["rev_olaylar"] = []
     st.session_state.pop("rev_sonuc", None)
@@ -138,7 +170,8 @@ if olaylar:
     if st.button("🔄 Rotayı yeniden hesapla", type="primary", width="stretch"):
         with st.spinner("Rota yeniden hesaplanıyor..."):
             try:
-                rs = revizyon.revize_et(plan, an_dk, tamamlanan, olaylar, merkez, lab, sure_limiti_sn=sure)
+                rs = revizyon.revize_et(plan, an_dk, tamamlanan, olaylar, merkez, lab, sure_limiti_sn=sure,
+                                        trafik=trafik_durumu.carpanlar if trafik_durumu else None)
                 st.session_state["rev_sonuc"] = (anahtar, [*olaylar], rs)
             except RuntimeError as hata:
                 st.error(str(hata))
@@ -192,7 +225,8 @@ if hesap and hesap[0] == anahtar:
         if st.button("✅ Onayla ve ekiplere gönder", type="primary"):
             rota_kayit.revizyon_kaydet(tarih_str, gun, bilgi, plan, rs, an_dk, hesap_olaylari, kullanici["id"])
             veritabani.iz_kaydi(kullanici["id"], "Rota revize edildi",
-                                f"{tarih_str} {saat(an_dk)} · " + " | ".join(o.aciklama() for o in hesap_olaylari))
+                                f"{tarih_str} {saat(an_dk)} · " + " | ".join(o.aciklama() for o in hesap_olaylari)
+                                + (" · anlık trafikle" if rs.trafik else ""))
             st.session_state["rev_olaylar"] = []
             st.session_state.pop("rev_sonuc", None)
             st.success("Yeni rota kaydedildi; hemşire ekranlarında güncellendi.")
@@ -202,7 +236,13 @@ if hesap and hesap[0] == anahtar:
     sekme_yeni, sekme_eski = st.tabs(["Yeni rota", "Önceki rota"])
     for sekme, s in ((sekme_yeni, yeni), (sekme_eski, plan)):
         with sekme:
-            components.html(harita.rota_haritasi(s, merkez, lab).get_root().render(), height=480)
+            if s is yeni and rs.trafik:
+                hm = harita.rota_haritasi(s, merkez, lab, trafik=rs.trafik)
+                if trafik_durumu and trafik_durumu.carpanlar == rs.trafik:
+                    harita.trafik_katmani(hm, trafik_durumu)
+            else:
+                hm = harita.rota_haritasi(s, merkez, lab)
+            components.html(hm.get_root().render(), height=480)
             kolonlar = st.columns(len(s.rotalar))
             for k, (kol, r) in enumerate(zip(kolonlar, s.rotalar)):
                 with kol:
