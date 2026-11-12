@@ -1,10 +1,14 @@
 """
-Haritada gösterilecek GÜZERGÂH: duraklar arasında gerçek yolların üzerinden geçen kıvrımlı çizgi.
+Gerçek yol ağı (OpenStreetMap) üzerinde hesaplar:
+  - olcumler(): noktalar arası YOL mesafesi (km) ve ham sürüş süresi -> rota hesabı (mesafe.py) kullanır
+  - guzergah() / rota_cizgisi(): haritada yolların üzerinden giden kıvrımlı çizgi
 
-- Yalnızca GÖSTERİM içindir. Rota hesabı ve süreler değişmez (kuş uçuşu tahmin: mesafe.py).
-- Yol ağı herkese açık OpenStreetMap verisidir ve bir kez indirilip harita_verisi/ klasörüne kaydedilmiştir
-  (araclar/yol_agi_indir.py). Güzergâh bu bilgisayarda hesaplanır; hiçbir konum dışarı gönderilmez.
-- Yol ağı dosyası yoksa ya da bir nokta yola çok uzaksa eskisi gibi düz çizgi çizilir.
+Yol ağı herkese açık OpenStreetMap verisidir; bir kez indirilip harita_verisi/ klasörüne kaydedilmiştir
+(araclar/yol_agi_indir.py). Bütün hesap bu bilgisayarda yapılır; hiçbir konum dışarı gönderilmez.
+Yol ağı dosyası yoksa ya da bir nokta yola çok uzaksa çağıran taraf eski kuş uçuşu tahminine döner.
+
+Nokta -> yol bağlantısı: her nokta en yakın kavşağa/yol düğümüne bağlanır; aradaki kısa parça
+kuş uçuşu × BAGLANTI_KATSAYISI uzunlukta ve BAGLANTI_HIZ_KMSA hızla sayılır (ev önündeki ara sokak).
 """
 
 import gzip
@@ -16,11 +20,15 @@ from pathlib import Path
 
 import numpy as np
 
-YOL_AGI_DOSYASI = Path(__file__).parent / "harita_verisi" / "yol_agi.pkl.gz"
-EN_FAZLA_YOLA_UZAKLIK_M = 3000   # nokta en yakın yola bundan uzaksa düz çizgi
-EN_YUKSEK_HIZ_MS = 130 / 3.6     # A* tahmini için (sürelerin alt sınırı)
+import ayarlar
 
-_ag = None  # (koordinat dizisi, düğüm kimlikleri, komşuluk, ara noktalar)
+YOL_AGI_DOSYASI = Path(__file__).parent / "harita_verisi" / "yol_agi.pkl.gz"
+EN_FAZLA_YOLA_UZAKLIK_M = 3000   # nokta en yakın yola bundan uzaksa yol ağı kullanılmaz
+EN_YUKSEK_HIZ_MS = 130 / 3.6     # A* tahmini için (sürelerin alt sınırı)
+BAGLANTI_KATSAYISI = 1.3
+BAGLANTI_HIZ_KMSA = 20
+
+_ag = None  # (koordinat dizisi, komşuluk [(j, süre_sn, uzunluk_m)], ara noktalar)
 
 
 def _metre(a, b) -> float:
@@ -45,9 +53,15 @@ def _yukle():
     koord = np.array([veri["dugumler"][n] for n in kimlikler], dtype=float)
     komsu = [[] for _ in kimlikler]
     ara = {}
-    for (u, v), (sure, _uzunluk, noktalar) in veri["kenarlar"].items():
+    esik = ayarlar.YOL_AGI_ANA_YOL_ESIGI_KMSA
+    for (u, v), (sure, uzunluk, noktalar) in veri["kenarlar"].items():
+        if u not in sira or v not in sira:
+            continue
         i, j = sira[u], sira[v]
-        komsu[i].append((j, sure))
+        # OSM hız sınırından ortalama sürüş hızına (kalibrasyon: ayarlar.YOL_AGI_*)
+        ana_yol = sure > 0 and uzunluk / sure * 3.6 >= esik
+        sure = sure / (ayarlar.YOL_AGI_ANA_YOL_ORANI if ana_yol else ayarlar.YOL_AGI_SEHIR_ICI_ORANI)
+        komsu[i].append((j, sure, uzunluk))
         if noktalar:
             ara[(i, j)] = noktalar
     _ag = (koord, komsu, ara)
@@ -66,6 +80,73 @@ def _en_yakin(koord, nokta):
     return i, math.sqrt(float(d2[i])) * 111_320
 
 
+def _dijkstra(komsu, bas, hedefler: set) -> dict:
+    """bas'tan hedeflere en kısa SÜRELİ yollar: {hedef: (süre_sn, uzunluk_m)}.
+    Bütün hedefler kesinleşince durur."""
+    kalan = set(hedefler)
+    sonuc = {}
+    en_iyi = {bas: 0.0}
+    kuyruk = [(0.0, 0.0, bas)]
+    while kuyruk and kalan:
+        sure, uzunluk, i = heapq.heappop(kuyruk)
+        if sure > en_iyi.get(i, math.inf):
+            continue
+        if i in kalan:
+            sonuc[i] = (sure, uzunluk)
+            kalan.discard(i)
+        for j, s, u in komsu[i]:
+            yeni = sure + s
+            if yeni < en_iyi.get(j, math.inf):
+                en_iyi[j] = yeni
+                heapq.heappush(kuyruk, (yeni, uzunluk + u, j))
+    return sonuc
+
+
+def _baglanti(mesafe_m):
+    """Nokta ile en yakın yol düğümü arasındaki kısa parça: (uzunluk_m, süre_sn)."""
+    uzunluk = mesafe_m * BAGLANTI_KATSAYISI
+    return uzunluk, uzunluk / (BAGLANTI_HIZ_KMSA / 3.6)
+
+
+def olcumler(noktalar) -> list | None:
+    """Noktalar arası yol ölçümleri: m[i][j] = (km, süre_dk) ya da None (o çift için yol ağı kullanılamaz).
+    Yol ağı yoksa None döner. Süre, kalibre edilmiş ortalama hızlarla hesaplanır (ayarlar.YOL_AGI_*)."""
+    ag = _yukle()
+    if ag is None:
+        return None
+    koord, komsu, _ = ag
+    n = len(noktalar)
+    yakin = [_en_yakin(koord, p) for p in noktalar]
+    kullanilir = [d <= EN_FAZLA_YOLA_UZAKLIK_M for _, d in yakin]
+    hedef_dugumler = {yakin[j][0] for j in range(n) if kullanilir[j]}
+    tablo = {}
+    for kaynak in {yakin[i][0] for i in range(n) if kullanilir[i]}:
+        tablo[kaynak] = _dijkstra(komsu, kaynak, hedef_dugumler)
+
+    m = [[None] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i == j or tuple(noktalar[i]) == tuple(noktalar[j]):
+                m[i][j] = (0.0, 0.0)
+                continue
+            if not (kullanilir[i] and kullanilir[j]):
+                continue
+            (di, mi), (dj, mj) = yakin[i], yakin[j]
+            yol = tablo[di].get(dj) if di != dj else (0.0, 0.0)
+            if yol is None:
+                continue
+            ui, si = _baglanti(mi)
+            uj, sj = _baglanti(mj)
+            if di == dj:  # aynı düğüme bağlılar: doğrudan aradaki kısa yol
+                ui, si = _baglanti(_metre(noktalar[i], noktalar[j]))
+                uj = sj = 0.0
+            m[i][j] = ((yol[1] + ui + uj) / 1000, (yol[0] + si + sj) / 60)
+    return m
+
+
+# ---------------------------------------------------------------------------
+# Haritada gösterilecek güzergâh çizgisi
+# ---------------------------------------------------------------------------
 def _a_yildiz(koord, komsu, bas, son):
     """En kısa SÜRELİ yol (A*). Bulunamazsa None."""
     hedef = (koord[son, 0], koord[son, 1])
@@ -86,7 +167,7 @@ def _a_yildiz(koord, komsu, bas, son):
             return yol[::-1]
         if g > en_iyi.get(i, math.inf):
             continue
-        for j, sure in komsu[i]:
+        for j, sure, _u in komsu[i]:
             yeni = g + sure
             if yeni < en_iyi.get(j, math.inf):
                 en_iyi[j] = yeni

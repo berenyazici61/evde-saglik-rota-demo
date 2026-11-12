@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 
 import ayarlar
 import harita
+import mesafe
 import optimizasyon
 import oturum
 import planlama
@@ -25,8 +26,7 @@ kullanici = oturum.rol_gerekli("yonetici")
 st.title("🗺️ Rota Planlama")
 st.warning(
     "**Deneme verisi.** İşlemler tanıya göre rastgele üretildi (sentetik). Hastalar, gizlilik gereği tarif "
-    "edilen yerin ~200 m çevresinde temsili bir noktaya yerleştirildi. Yol süreleri kuş uçuşu mesafeden "
-    "tahmin ediliyor (Of→7M ölçümüyle kalibre)."
+    "edilen yerin ~200 m çevresinde temsili bir noktaya yerleştirildi. " + mesafe.kaynak()
 )
 
 

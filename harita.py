@@ -29,7 +29,7 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
         yol = [(d.enlem, d.boylam) for d in r.duraklar]
         noktalar += yol
         if r.hasta_sayisi:
-            # Gösterim için gerçek yollar üzerinden güzergâh (hesap kuş uçuşu kalır; bkz. yol_guzergahi.py)
+            # Gerçek yollar üzerinden güzergâh (rota hesabıyla aynı yol ağı; bkz. yol_guzergahi.py)
             folium.PolyLine(yol_guzergahi.rota_cizgisi(yol), color=renk, weight=4, opacity=0.75,
                             tooltip=r.ekip).add_to(m)
         sira = 0

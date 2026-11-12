@@ -77,6 +77,17 @@ YOL_KATSAYISI_UZAK = 1.1    # sonrası: sahil yolu kıyıya paralel, kuş uçuş
 SEHIR_ICI_KM = 5            # her yolculuğun ilk 5 yol-km'si şehir içi kabul edilir
 SEHIR_ICI_HIZ_KMSA = 30     # şehir içi ortalama (sınır 50)
 ANA_YOL_HIZ_KMSA = 85       # bölünmüş sahil yolu ortalaması (yasal sınırın altında)
+# (Yukarıdaki kuş uçuşu tahmini artık yalnızca yol ağı dosyası yoksa kullanılır.)
+
+# ---------------------------------------------------------------------------
+# Gerçek yol ağı (OpenStreetMap, harita_verisi/yol_agi.pkl.gz) – 12.11.2026'dan itibaren rota hesabı bunu kullanır
+# Mesafe: gerçek yol uzunluğu. Süre: her yol parçasının OSM hız sınırı (yoksa yol tipinin ortalaması) ×  oran.
+# Kalibrasyon: Of -> 7M ölçümü ≈ 45 dk + 5 dk trafik payı = 50 dk (eski yöntemle aynı hedef).
+# ---------------------------------------------------------------------------
+YOL_AGI_ANA_YOL_ESIGI_KMSA = 55   # OSM hızı bunun altındaki yollar şehir içi sayılır
+YOL_AGI_SEHIR_ICI_ORANI = 0.7     # şehir içi ortalama = sınırın %70'i (ışık, kavşak, yokuş; 50'lik yolda 35 km/sa)
+YOL_AGI_ANA_YOL_ORANI = 1.12      # ana yollar: Of -> 7M = 50 dk olacak şekilde kalibre (OSM'de sahil yolunun
+                                  # çoğu parçasında hız etiketi yok, 60 varsayılıyor; gerçek sınır 82-90)
 
 # ---------------------------------------------------------------------------
 # Ekipler
