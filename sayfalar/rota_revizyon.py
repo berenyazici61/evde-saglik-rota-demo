@@ -84,8 +84,13 @@ if ayarlar.TRAFIK_KULLANILABILIR:
                         f"Trafik {dt.datetime.fromtimestamp(trafik_durumu.zaman).strftime('%H:%M')} itibarıyla, "
                         f"{len(trafik_durumu.carpanlar)} bölge: 🔴 {yogun} yoğun · 🟠 {orta} orta · "
                         f"🟢 {len(trafik_durumu.carpanlar) - yogun - orta} akıcı. Ortalama süre çarpanı "
-                        f"×{trafik_durumu.ortalama_yavaslama:.2f}. Servise yalnızca ana yollardaki sabit örnek "
-                        "noktalar gönderilir; hasta ya da ekip konumu gönderilmez.")
+                        f"×{trafik_durumu.ortalama_yavaslama:.2f}. Hesap için yalnızca ana yollardaki sabit örnek "
+                        "noktalar sorgulanır, harita katmanı görüntülenen bölgeye göre gelir; hasta ya da ekip "
+                        "konumu gönderilmez.")
+                    with st.expander("🗺️ Anlık trafik haritası (kayıtlı rota ile)", expanded=True):
+                        th = harita.trafik_katmani(harita.rota_haritasi(plan, merkez, lab),
+                                                   trafik.api_anahtari())
+                        components.html(th.get_root().render(), height=460)
             elif not simdiki:
                 st.caption("🚦 Anlık trafik yalnızca bugün ve şimdiki saate yakın olaylar için açılabilir.")
 
@@ -237,12 +242,9 @@ if hesap and hesap[0] == anahtar:
     sekme_yeni, sekme_eski = st.tabs(["Yeni rota", "Önceki rota"])
     for sekme, s in ((sekme_yeni, yeni), (sekme_eski, plan)):
         with sekme:
-            if s is yeni and rs.trafik:
-                hm = harita.rota_haritasi(s, merkez, lab, trafik=rs.trafik)
-                if trafik_durumu and trafik_durumu.carpanlar == rs.trafik:
-                    harita.trafik_katmani(hm, trafik_durumu)
-            else:
-                hm = harita.rota_haritasi(s, merkez, lab)
+            hm = harita.rota_haritasi(s, merkez, lab, trafik=rs.trafik if s is yeni else None)
+            if trafik_durumu:  # anlık trafik açıksa iki haritada da yollar trafiğe göre renkli
+                harita.trafik_katmani(hm, trafik.api_anahtari())
             components.html(hm.get_root().render(), height=480)
             kolonlar = st.columns(len(s.rotalar))
             for k, (kol, r) in enumerate(zip(kolonlar, s.rotalar)):

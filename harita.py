@@ -75,15 +75,29 @@ def rota_haritasi(sonuc: optimizasyon.Sonuc, merkez, lab, sadece_ekip: int | Non
     return m
 
 
-def trafik_katmani(m: folium.Map, durum) -> folium.Map:
-    """Anlık trafik örnek noktalarını haritada renkli küçük dairelerle gösterir (yeşil akıcı → kırmızı yoğun)."""
-    for nokta, carpan, oran, kapali in zip(durum.noktalar, durum.carpanlar, durum.hiz_orani, durum.kapali):
-        if oran is None:
-            continue
-        renk = "#16a34a" if carpan < 1.15 else "#f59e0b" if carpan < 1.5 else "#dc2626"
-        metin = "Yol kapalı" if kapali else f"Hız serbest akışın %{oran * 100:.0f}'i · süre ×{carpan:.2f}"
-        folium.CircleMarker(nokta, radius=5, color=renk, weight=1, fill=True, fill_color=renk, fill_opacity=0.8,
-                            tooltip=f"Trafik: {metin}").add_to(m)
+TRAFIK_KAROSU = ("https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{{z}}/{{x}}/{{y}}.png"
+                 "?key={anahtar}&tileSize=256")
+
+
+def trafik_katmani(m: folium.Map, anahtar: str) -> folium.Map:
+    """Haritaya TomTom'un anlık trafik katmanını ekler: yollar trafik durumuna göre renklenir
+    (yeşil akıcı → turuncu → kırmızı → koyu kırmızı / kapalı). Yalnızca demoda kullanılır.
+    Karolar görüntülenen harita alanına göre istenir; hasta ya da ekip konumu gönderilmez."""
+    folium.TileLayer(tiles=TRAFIK_KAROSU.format(anahtar=anahtar), attr="Anlık trafik © TomTom",
+                     name="Anlık trafik (TomTom)", overlay=True, control=True, opacity=0.9,
+                     max_zoom=22).add_to(m)
+    folium.LayerControl(collapsed=True).add_to(m)
+    lejant = """
+    <div style="position:absolute;bottom:22px;left:10px;z-index:9999;background:rgba(255,255,255,.92);
+                padding:6px 9px;border-radius:6px;font:12px Arial,sans-serif;color:#222;
+                box-shadow:0 1px 4px rgba(0,0,0,.3)">
+      <b>Anlık trafik</b><br>
+      <span style="display:inline-block;width:18px;height:4px;background:#2ecc40;vertical-align:middle"></span> akıcı
+      &nbsp;<span style="display:inline-block;width:18px;height:4px;background:#ff9900;vertical-align:middle"></span> yavaş
+      &nbsp;<span style="display:inline-block;width:18px;height:4px;background:#e3261b;vertical-align:middle"></span> yoğun
+      &nbsp;<span style="display:inline-block;width:18px;height:4px;background:#7a0f0f;vertical-align:middle"></span> çok yoğun / kapalı
+    </div>"""
+    m.get_root().html.add_child(folium.Element(lejant))
     return m
 
 
