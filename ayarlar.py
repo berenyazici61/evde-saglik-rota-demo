@@ -121,7 +121,10 @@ AGIRLIK_TOPLAM_YOL = 1              # tüm ekiplerin toplam yol süresi (dk)
 # --- Gün içi dinamik rota revizyonu (acil hasta, ziyaret uzaması, iptal) --- VARSAYIM, teyit edilecek
 ACIL_HEDEF_DK = 30                 # acil hastaya olaydan sonra en geç bu sürede ulaşılması hedeflenir (aşılırsa uyarı)
 ACIL_BEKLEME_AGIRLIGI = 20          # acil hastanın olaydan varışa kadar beklediği her dakika amaçta 20 dk sayılır
-DEGISIKLIK_CEZASI_DK = 15           # bir hastanın sabah planındaki ekibinden başka ekibe geçmesi amaçta 15 dk sayılır
+SAATLI_TOLERANS_DK = 10             # saatli (randevulu) yeni hasta: istenen saatten en fazla bu kadar geç başlanabilir
+SAATLI_GECIKME_AGIRLIGI = 50        # tolerans aşılırsa her dakika amaçta 50 dk sayılır (pratikte kesin kural)
+BEKLEME_AGIRLIGI = 1                # ekibin saatli ziyaret için beklediği her dakika amaçta 1 dk sayılır
+DEGISIKLIK_CEZASI_DK = 15          # bir hastanın sabah planındaki ekibinden başka ekibe geçmesi amaçta 15 dk sayılır
 
 
 def dakika(saat: str) -> int:

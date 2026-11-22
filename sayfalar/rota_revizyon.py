@@ -26,7 +26,7 @@ from ayarlar import saat
 
 kullanici = oturum.rol_gerekli("yonetici")
 st.title("🚨 Gün İçi Değişiklik")
-st.caption("Acil hasta, uzayan ziyaret veya iptal olduğunda rotayı ekiplerin **o anki durumundan** başlayarak "
+st.caption("Acil hasta, belirli bir saatte gidilmesi gereken yeni hasta, uzayan ziyaret veya iptal olduğunda rotayı ekiplerin **o anki durumundan** başlayarak "
            "yeniden hesaplar. Tamamlanan ve devam eden ziyaretler değişmez; araçtaki kan örnekleri aynı ekip "
            "tarafından teslim edilir.")
 
@@ -122,12 +122,25 @@ hastalar = veri_yukle.hastalari_yukle().dropna(subset=["enlem"]).set_index("hast
 tur = st.radio("Olay türü", list(revizyon.OLAY_TURLERI), format_func=revizyon.OLAY_TURLERI.get, horizontal=True)
 
 with st.container(border=True):
-    if tur == "acil":
+    if tur in revizyon.YENI_HASTA_TURLERI:
+        if tur == "saatli":
+            st.caption("Hastaya **belirli bir saatte** gidilmesi gerekiyorsa (ör. hasta yakını 14:00'te evde olacak) "
+                       "o saati girin. Rota, bir ekip tam o saatte orada olacak şekilde yeniden hesaplanır; erken "
+                       "varan ekip bekler. Plandaki bir hastanın saati değiştiyse onu da seçebilirsiniz.")
         secenek = list(hastalar.index)
         hasta = st.selectbox(
             "Hasta", secenek,
             format_func=lambda k: f"{k} · {hastalar.at[k, 'mahalle']}"
                                   + (f" · bugün Ekip {ekibi[k]} planında" if k in ekibi else ""))
+        hedef_dk, tolerans = None, 0
+        if tur == "saatli":
+            s1, s2 = st.columns(2)
+            oneri = min(23 * 60, (an_dk + 60) // 15 * 15)
+            hedef_saat = s1.time_input("Gidilmesi gereken saat", value=dt.time(oneri // 60, oneri % 60), step=300,
+                                       key="saatli_hedef")
+            tolerans = s2.number_input("En fazla kaç dk geç başlanabilir?", 0, 60, ayarlar.SAATLI_TOLERANS_DK,
+                                       step=5, key="saatli_tolerans")
+            hedef_dk = hedef_saat.hour * 60 + hedef_saat.minute
         gunun = veri_yukle.gunun_ziyaretleri(gun).set_index("hasta_kodu")["islemler"]
         varsayilan_islem = gunun.get(hasta, veri_yukle.VARSAYILAN_ISLEM).split(";")
         sureler = veri_yukle.islem_sureleri_sozlugu()
@@ -137,13 +150,17 @@ with st.container(border=True):
         st.caption(f"Planlanan ziyaret süresi: **{ziyaret_suresi} dk**. Hasta listede yoksa önce **Hastalar** "
                    "sayfasından eklenmeli (konumu gerekli).")
         if hasta in tamamlanan:
-            st.info(f"{hasta} için bugün ziyaret kaydı var; acil olarak yeniden ziyaret edilecek.")
-        if st.button("Olayı ekle", type="primary", disabled=not islemler):
+            st.info(f"{hasta} için bugün ziyaret kaydı var; yeniden ziyaret edilecek.")
+        saat_gecersiz = tur == "saatli" and hedef_dk < an_dk
+        if saat_gecersiz:
+            st.warning(f"Gidilmesi gereken saat, olay saatinden ({saat(an_dk)}) önce olamaz.")
+        if st.button("Olayı ekle", type="primary", disabled=not islemler or saat_gecersiz):
             olaylar[:] = [o for o in olaylar if o.hasta_kodu != hasta]
-            olaylar.append(revizyon.Olay("acil", hasta, islemler=";".join(islemler), sure_dk=ziyaret_suresi,
+            olaylar.append(revizyon.Olay(tur, hasta, islemler=";".join(islemler), sure_dk=ziyaret_suresi,
                                          kan_alimi="Kan alımı" in islemler,
                                          enlem=float(hastalar.at[hasta, "enlem"]),
-                                         boylam=float(hastalar.at[hasta, "boylam"])))
+                                         boylam=float(hastalar.at[hasta, "boylam"]),
+                                         hedef_dk=hedef_dk, tolerans_dk=int(tolerans)))
             st.session_state.pop("rev_sonuc", None)
             st.rerun()
     else:
@@ -205,6 +222,11 @@ if hesap and hesap[0] == anahtar:
                                                                         if d.varis_dk == varis))
         m[0].metric(f"Acil {kod}", saat(varis), delta=f"Ekip {ekip} · {varis - an_dk} dk sonra",
                     delta_color="off")
+    for kod, (istenen, baslangic, ekip) in rs.saatli_varis.items():
+        gec = baslangic - istenen
+        m[0].metric(f"🕒 {kod} (istenen {saat(istenen)})", saat(baslangic),
+                    delta=f"Ekip {ekip} · " + ("tam zamanında" if gec == 0 else f"{gec} dk geç"),
+                    delta_color="off" if gec == 0 else "inverse")
     fark = yeni.en_gec_bitis - plan.en_gec_bitis
     m[1].metric("En geç bitiş", saat(yeni.en_gec_bitis), delta=f"{fark:+d} dk", delta_color="inverse")
     m[2].metric("Toplam yol", f"{yeni.toplam_km:.0f} km", delta=f"{yeni.toplam_km - plan.toplam_km:+.0f} km",
@@ -222,10 +244,11 @@ if hesap and hesap[0] == anahtar:
     st.dataframe(karsilastirma, hide_index=True, width="stretch")
     if rs.degisen:
         st.markdown("**Ekip değişiklikleri:** " + "; ".join(
-            f"{h}: {'yeni (acil)' if e is None else f'Ekip {e}'} → **Ekip {y}**" for h, e, y in rs.degisen))
+            f"{h}: {'yeni' if e is None else f'Ekip {e}'} → **Ekip {y}**" for h, e, y in rs.degisen))
     st.caption(f"Amaç: en geç bitiş + toplam yol + kan gecikmesi cezası + acil hastanın her bekleme dakikası "
-               f"×{ayarlar.ACIL_BEKLEME_AGIRLIGI} + ekip değiştiren her hasta {ayarlar.DEGISIKLIK_CEZASI_DK} dk. "
-               "Sabah planının kalanı başlangıç çözümü olarak da denenir.")
+               f"×{ayarlar.ACIL_BEKLEME_AGIRLIGI} + ekip değiştiren her hasta {ayarlar.DEGISIKLIK_CEZASI_DK} dk "
+               f"+ saatli hastada izin verilenden geç kalınan her dakika ×{ayarlar.SAATLI_GECIKME_AGIRLIGI}. "
+               "Saatli ziyarete erken varan ekip bekler. Sabah planının kalanı başlangıç çözümü olarak da denenir.")
 
     with st.container(border=True):
         if st.button("✅ Onayla ve ekiplere gönder", type="primary"):

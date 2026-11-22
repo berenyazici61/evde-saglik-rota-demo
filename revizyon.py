@@ -30,25 +30,34 @@ import mesafe
 from optimizasyon import ATLAMA_CEZASI, Durak, EkipRotasi, Sonuc
 from ayarlar import saat
 
-OLAY_TURLERI = {"acil": "🚨 Acil hasta", "uzama": "⏱️ Ziyaret uzadı", "iptal": "❌ İptal / hasta evde yok"}
+OLAY_TURLERI = {"acil": "🚨 Acil hasta", "saatli": "🕒 Yeni hasta (saatli)", "uzama": "⏱️ Ziyaret uzadı",
+                "iptal": "❌ İptal / hasta evde yok"}
 ACIL_ON_EKI = "🚨 ACİL;"     # acil durağın işlem metninin başına eklenir (hemşire ekranında görünsün)
+SAATLI_ON_EKI = "🕒 SAAT {saat};"   # saatli ziyaretin işlem metninin başına eklenir
 IPTAL_YAZISI = "❌ İPTAL (hasta evde yok / iptal)"
+YENI_HASTA_TURLERI = ("acil", "saatli")   # yeni bir ziyaret ekleyen olaylar
 
 
 @dataclass
 class Olay:
-    tur: str                       # "acil", "uzama", "iptal"
+    tur: str                       # "acil", "saatli", "uzama", "iptal"
     hasta_kodu: str
     ek_dk: int = 0                 # uzama
-    islemler: str = ""             # acil: yapılacak işlemler (";" ile)
-    sure_dk: int = 0               # acil: ziyaret süresi
-    kan_alimi: bool = False        # acil
-    enlem: float | None = None     # acil
+    islemler: str = ""             # acil / saatli: yapılacak işlemler (";" ile)
+    sure_dk: int = 0               # acil / saatli: ziyaret süresi
+    kan_alimi: bool = False        # acil / saatli
+    enlem: float | None = None     # acil / saatli
     boylam: float | None = None
+    hedef_dk: int | None = None    # saatli: ziyaretin başlaması gereken saat (dk); erken varan ekip bekler
+    tolerans_dk: int = 0           # saatli: bu kadar geç başlamaya izin verilir (aşılırsa cezalı + uyarı)
 
     def aciklama(self) -> str:
         if self.tur == "acil":
             return f"Acil hasta {self.hasta_kodu} ({self.sure_dk} dk" + (", kan alımı" if self.kan_alimi else "") + ")"
+        if self.tur == "saatli":
+            return (f"Yeni hasta {self.hasta_kodu}, saat {saat(self.hedef_dk)}"
+                    + (f" (en geç {saat(self.hedef_dk + self.tolerans_dk)})" if self.tolerans_dk else "")
+                    + f" · {self.sure_dk} dk" + (", kan alımı" if self.kan_alimi else ""))
         if self.tur == "uzama":
             return f"{self.hasta_kodu} ziyareti {self.ek_dk} dk uzadı"
         return f"{self.hasta_kodu} ziyareti iptal / hasta evde yok"
@@ -81,6 +90,7 @@ class RevizyonSonucu:
     uyarilar: list[str]
     atlanan_nedenleri: dict        # {hasta: neden}
     trafik: tuple | None = None    # hesapta kullanılan anlık trafik çarpanları (yoksa None)
+    saatli_varis: dict = field(default_factory=dict)  # {hasta: (istenen dk, ziyaret başlangıcı dk, ekip no)}
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +116,8 @@ def durum_cikar(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Ola
         durumlar.append(e)
 
     for o in olaylar:
-        if o.tur == "acil":
-            for e in durumlar:  # plandaki bir hasta acil olarak öne alındıysa eski yerinden çıkar
+        if o.tur in YENI_HASTA_TURLERI:
+            for e in durumlar:  # plandaki bir hasta acil / saatli olarak yeniden eklendiyse eski yerinden çıkar
                 e.kalan = [d for d in e.kalan if not (d.tur == "Hasta" and d.ad == o.hasta_kodu)]
             continue
         bulundu = False
@@ -159,16 +169,20 @@ def kalan_ziyaretler(durumlar: list[EkipDurumu], olaylar: list[Olay]) -> pd.Data
             if d.tur == "Hasta":
                 satirlar.append(dict(hasta_kodu=d.ad, enlem=d.enlem, boylam=d.boylam,
                                      sure_dk=d.ayrilis_dk - d.varis_dk + e.ek_sure.get(d.ad, 0),
-                                     kan_alimi=d.kan_alimi, islemler=d.islemler, eski_ekip=e.ekip_no, acil=False))
+                                     kan_alimi=d.kan_alimi, islemler=d.islemler, eski_ekip=e.ekip_no, acil=False,
+                                     hedef_dk=None, tolerans_dk=0))
     for o in olaylar:
-        if o.tur != "acil":
+        if o.tur not in YENI_HASTA_TURLERI:
             continue
         eski = next((e.ekip_no for e in durumlar for d in e.kalan if d.ad == o.hasta_kodu), None)
         satirlar = [s for s in satirlar if s["hasta_kodu"] != o.hasta_kodu]
+        on_ek = ACIL_ON_EKI if o.tur == "acil" else SAATLI_ON_EKI.format(saat=saat(o.hedef_dk))
         satirlar.append(dict(hasta_kodu=o.hasta_kodu, enlem=o.enlem, boylam=o.boylam, sure_dk=o.sure_dk,
-                             kan_alimi=o.kan_alimi, islemler=ACIL_ON_EKI + o.islemler, eski_ekip=eski, acil=True))
+                             kan_alimi=o.kan_alimi, islemler=on_ek + o.islemler, eski_ekip=eski,
+                             acil=o.tur == "acil", hedef_dk=o.hedef_dk if o.tur == "saatli" else None,
+                             tolerans_dk=o.tolerans_dk if o.tur == "saatli" else 0))
     return pd.DataFrame(satirlar, columns=["hasta_kodu", "enlem", "boylam", "sure_dk", "kan_alimi", "islemler",
-                                           "eski_ekip", "acil"])
+                                           "eski_ekip", "acil", "hedef_dk", "tolerans_dk"])
 
 
 # ---------------------------------------------------------------------------
@@ -222,8 +236,11 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
             return hizmet[i] + yol[i][j] + ek
         geri_cagrilar.append(zaman_cb)
 
-        routing.AddDimension(routing.RegisterTransitCallback(zaman_cb), 0, 24 * 60, False, "Zaman")
+        # Bekleme (slack): saatli ziyarete erken varan ekip bekleyebilsin. Her bekleme dakikası amaçta
+        # 1 dk sayılır; böylece bekleme yalnızca gerektiğinde (saatli ziyaret) oluşur.
+        routing.AddDimension(routing.RegisterTransitCallback(zaman_cb), 24 * 60, 24 * 60, False, "Zaman")
         zaman = routing.GetDimensionOrDie("Zaman")
+        zaman.SetSlackCostCoefficientForAllVehicles(ayarlar.BEKLEME_AGIRLIGI)
         for k, e in enumerate(durumlar):
             zaman.CumulVar(routing.Start(k)).SetRange(e.hazir_dk, e.hazir_dk)
         zaman.SetGlobalSpanCostCoefficient(ayarlar.AGIRLIK_EN_GEC_BITIS)
@@ -233,6 +250,11 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
             routing.AddDisjunction([idx], ATLAMA_CEZASI)
             if bool(z.loc[i, "acil"]):  # acil hastanın olaydan varışa kadar beklediği her dakika cezalı
                 zaman.SetCumulVarSoftUpperBound(idx, an_dk, ayarlar.ACIL_BEKLEME_AGIRLIGI)
+            if pd.notna(z.loc[i, "hedef_dk"]):  # saatli: ziyaret hedef saatten önce başlayamaz (ekip bekler),
+                hedef_i = int(z.loc[i, "hedef_dk"])  # hedef + tolerans aşılırsa her dakika ağır cezalı
+                zaman.CumulVar(idx).SetMin(hedef_i)
+                zaman.SetCumulVarSoftUpperBound(idx, hedef_i + int(z.loc[i, "tolerans_dk"]),
+                                                ayarlar.SAATLI_GECIKME_AGIRLIGI)
 
         for t, i in enumerate(kan):  # yeni kan alımları: alım-teslim çifti (sabah modeliyle aynı)
             alim, teslim = manager.NodeToIndex(ilk_hasta + i), manager.NodeToIndex(ilk_kopya + t)
@@ -241,7 +263,8 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
             solver.Add(routing.ActiveVar(alim) == routing.ActiveVar(teslim))
             solver.Add(routing.VehicleVar(alim) == routing.VehicleVar(teslim))
             solver.Add(zaman.CumulVar(alim) <= zaman.CumulVar(teslim))
-            if not bool(z.loc[i, "acil"]):  # acil hasta kan sınırı yüzünden atlanmasın: yalnızca cezalı
+            if not bool(z.loc[i, "acil"]) and pd.isna(z.loc[i, "hedef_dk"]):
+                # acil / saatli hasta kan sınırı yüzünden atlanmasın: yalnızca cezalı
                 zaman.CumulVar(teslim).SetMax(son)
             zaman.SetCumulVarSoftUpperBound(teslim, hedef, ayarlar.KAN_GECIKME_CEZASI)
 
@@ -276,7 +299,7 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
     yeni_rotalar, atlanan = min(adaylar, key=lambda a: a[0])[1]
 
     sonuc = Sonuc(yeni_rotalar, list(plan.atlanan) + atlanan, True)
-    degisen, acil_varis = [], {}
+    degisen, acil_varis, saatli_varis = [], {}, {}
     for k, r in enumerate(yeni_rotalar, start=1):
         sabit_sayisi = len(durumlar[k - 1].sabit)
         for d in r.duraklar[sabit_sayisi:]:
@@ -285,6 +308,13 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
             satir = z[z["hasta_kodu"] == d.ad].iloc[0]
             if satir["acil"]:
                 acil_varis[d.ad] = d.varis_dk
+            if pd.notna(satir["hedef_dk"]):
+                saatli_varis[d.ad] = (int(satir["hedef_dk"]), d.varis_dk, k)
+                gec = d.varis_dk - int(satir["hedef_dk"])
+                if gec > int(satir["tolerans_dk"]):
+                    uyarilar.append(f"Saatli hasta {d.ad}: ziyaret {saat(d.varis_dk)}'te başlayabiliyor, istenen "
+                                    f"saat {saat(int(satir['hedef_dk']))} ({gec} dk geç). Hiçbir ekip daha erken "
+                                    "yetişemiyor.")
             eski = None if pd.isna(satir["eski_ekip"]) else int(satir["eski_ekip"])
             if eski != k:
                 degisen.append((d.ad, eski, k))
@@ -307,7 +337,7 @@ def revize_et(plan: Sonuc, an_dk: int, tamamlanan: set[str], olaylar: list[Olay]
         satir = z[z["hasta_kodu"] == kod].iloc[0]
         nedenler[kod] = ("Kan teslimi artık en geç saate yetişmiyor; bugün başka bir ekip de alamıyor."
                          if satir["kan_alimi"] else "Kalan sürede hiçbir rotaya sığdırılamadı.")
-    return RevizyonSonucu(sonuc, durumlar, degisen, acil_varis, uyarilar, nedenler, trafik)
+    return RevizyonSonucu(sonuc, durumlar, degisen, acil_varis, uyarilar, nedenler, trafik, saatli_varis)
 
 
 def _eski_sira(durumlar, z, kan, tasiyan, ilk_hasta, ilk_kopya, ilk_tasinan, manager):

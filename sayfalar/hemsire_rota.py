@@ -89,7 +89,8 @@ for i, d in enumerate(rota.duraklar):
             simge = "✅" if bitti else ("❌" if d.islemler.startswith("❌") else "⬜")
             st.markdown(f"{simge} **{sira}. {d.ad}** · {saat(d.varis_dk)}–{saat(d.ayrilis_dk)}"
                         + (" · 🩸 kan alımı" if d.kan_alimi else "")
-                        + (" · **🚨 ACİL**" if d.islemler.startswith("🚨") else ""))
+                        + (" · **🚨 ACİL**" if d.islemler.startswith("🚨") else "")
+                        + (f" · **🕒 {saat(d.varis_dk)}'te orada olunmalı**" if d.islemler.startswith("🕒") else ""))
             if h is not None:
                 st.caption(f"📍 {h['mahalle']} · {h['konum_tarifi']}")
             st.write("İşlemler: " + d.islemler.replace(";", ", "))
