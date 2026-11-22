@@ -75,7 +75,8 @@ if ayarlar.TRAFIK_KULLANILABILIR:
             if trafik_acik:
                 trafik_durumu = trafik.guncel_durum(yenile=t2.button("Yenile"))
                 if trafik_durumu is None:
-                    st.warning("Trafik servisine ulaşılamadı; trafiksiz hesaplanacak.")
+                    st.warning("Trafik servisine ulaşılamadı; trafiksiz hesaplanacak."
+                               + (f" Servisin yanıtı: `{trafik.son_hata['metin']}`" if trafik.son_hata["metin"] else ""))
                 else:
                     yogun = sum(c >= 1.5 for c in trafik_durumu.carpanlar)
                     orta = sum(1.15 <= c < 1.5 for c in trafik_durumu.carpanlar)

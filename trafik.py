@@ -26,6 +26,7 @@ EN_FAZLA_CARPAN = 5.0          # yol kapalı / çok yoğun trafik üst sınırı
 KAPALI_YOL_CARPANI = 5.0
 
 _onbellek: dict = {"zaman": 0.0, "durum": None}
+son_hata: dict = {"metin": ""}   # son başarısız istek (anahtar içermez), arayüzde gösterilir
 
 
 @dataclass
@@ -53,7 +54,8 @@ def api_anahtari() -> str:
         anahtar = st.secrets.get("TOMTOM_API_KEY", "")
     except Exception:  # secrets dosyası yok vb.
         anahtar = ""
-    return anahtar or os.environ.get("TOMTOM_API_KEY", "")
+    anahtar = anahtar or os.environ.get("TOMTOM_API_KEY", "")
+    return str(anahtar).strip().strip('"').strip("'").strip()
 
 
 def _sorgula(nokta, anahtar):
@@ -62,6 +64,11 @@ def _sorgula(nokta, anahtar):
         r = requests.get(URL, params={"point": f"{nokta[0]:.5f},{nokta[1]:.5f}", "unit": "KMPH", "key": anahtar},
                          timeout=8)
         if r.status_code != 200:
+            try:
+                ayrinti = r.json().get("detailedError", {}).get("message", "") or r.text[:150]
+            except ValueError:
+                ayrinti = r.text[:150]
+            son_hata["metin"] = f"HTTP {r.status_code}: {ayrinti}".replace(anahtar, "***")
             return None
         v = r.json()["flowSegmentData"]
         if v.get("roadClosure"):
@@ -71,7 +78,8 @@ def _sorgula(nokta, anahtar):
             return None
         carpan = min(EN_FAZLA_CARPAN, max(1.0, simdi / serbest))
         return carpan, float(v["currentSpeed"]) / max(1.0, float(v["freeFlowSpeed"])), False
-    except (requests.RequestException, KeyError, ValueError, TypeError):
+    except (requests.RequestException, KeyError, ValueError, TypeError) as hata:
+        son_hata["metin"] = f"{type(hata).__name__}: {str(hata)[:150]}".replace(anahtar, "***")
         return None
 
 
@@ -81,11 +89,19 @@ def guncel_durum(yenile: bool = False) -> TrafikDurumu | None:
         return None
     if not yenile and _onbellek["durum"] and time.time() - _onbellek["zaman"] < ONBELLEK_SN:
         return _onbellek["durum"]
+    if not yenile and time.time() - _onbellek.get("hata_zaman", 0) < 60:
+        return None   # az önce başarısız oldu; sayfa her yenilendiğinde 67 istek harcanmasın
     anahtar = api_anahtari()
     noktalar = yol_guzergahi.trafik_ornek_noktalari()
+    son_hata["metin"] = ""
+    # Önce tek nokta: anahtar geçersizse 67 istek harcanmasın
+    if _sorgula(noktalar[0], anahtar) is None and son_hata["metin"].startswith(("HTTP 401", "HTTP 403")):
+        _onbellek["hata_zaman"] = time.time()
+        return None
     with ThreadPoolExecutor(max_workers=6) as havuz:
         yanitlar = list(havuz.map(lambda p: _sorgula(p, anahtar), noktalar))
     if all(y is None for y in yanitlar):
+        _onbellek["hata_zaman"] = time.time()
         return None
     durum = TrafikDurumu(
         zaman=time.time(),
